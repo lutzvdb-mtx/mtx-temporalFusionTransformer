@@ -1,14 +1,14 @@
-from pytorch_lightning.tuner import Tuner
+from lightning.pytorch.tuner import Tuner
 from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
-from pytorch_forecasting.metrics import MAE, SMAPE, PoissonLoss, QuantileLoss
+from pytorch_forecasting.metrics import MAE, SMAPE, MAPE, PoissonLoss, QuantileLoss
 from pytorch_forecasting.data import GroupNormalizer
 from pytorch_forecasting import Baseline, TemporalFusionTransformer, TimeSeriesDataSet
 import torch
 import pandas as pd
 import numpy as np
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
-import pytorch_lightning as pl
+from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
+import lightning.pytorch as pl
 import math
 
 data = pd.read_csv("Spieldatensatz.csv")
@@ -28,9 +28,9 @@ data_simple["Group"] = data_simple["Group"].apply(str)
 data_simple["Monat"] = data_simple["Monat"].apply(str)
 data_simple["TagImMonat"] = data_simple["TagImMonat"].apply(str)
 
-max_prediction_length = 365
-max_encoder_length = 24
-training_cutoff = data_simple["time_idx"].max() - max_prediction_length
+max_prediction_length = 3
+max_encoder_length = 7
+training_cutoff = data_simple["time_idx"].max() - 365
 
 training = TimeSeriesDataSet(
     data_simple[lambda x: x.time_idx <= training_cutoff],
@@ -96,8 +96,8 @@ tft = TemporalFusionTransformer.from_dataset(
 )
 print(f"Number of parameters in network: {tft.size()/1e3:.1f}k")
 
-# find optimal learning rate (already done, 0.15)
-if (False)
+# find optimal learning rate (already done, 0.08)
+if (False):
     res = Tuner(trainer).lr_find(
         tft,
         train_dataloaders=train_dataloader,
@@ -130,7 +130,7 @@ trainer = pl.Trainer(
 
 tft = TemporalFusionTransformer.from_dataset(
     training,
-    learning_rate=0.15,
+    learning_rate=0.08,
     hidden_size=16,
     attention_head_size=2,
     dropout=0.1,
@@ -153,3 +153,11 @@ trainer.fit(
 # (given that we use early stopping, this is not necessarily the last epoch)
 best_model_path = trainer.checkpoint_callback.best_model_path
 best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
+predictions = best_tft.predict(
+    val_dataloader, return_y=True, trainer_kwargs=dict(accelerator="cpu"))
+raw_predictions = best_tft.predict(val_dataloader, mode="raw", return_x=True)
+raw_predictions.output.prediction[:, :, 1]
+raw_predictions
+plot = best_tft.plot_prediction(
+    raw_predictions.x, raw_predictions.output, idx=2, add_loss_to_title=True)
+plot.show()
